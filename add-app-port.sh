@@ -18,6 +18,12 @@ echo "Updating /etc/biai-ports with APP_PORT and patching user environments..."
 while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
     [ -z "$USERNAME" ] && continue
 
+    # Skip users whose home directory doesn't exist
+    if [ ! -d "/home/$USERNAME" ]; then
+        echo "  $USERNAME: SKIPPED (no home directory)"
+        continue
+    fi
+
     # Default term port if missing
     [ -z "$TERM_PORT" ] && TERM_PORT=$((TTYD_PORT + 2000))
     # Assign app port if missing
@@ -40,17 +46,17 @@ while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
     SETTINGS_FILE="/home/$USERNAME/.claude/settings.json"
     if [ -f "$SETTINGS_FILE" ] && ! grep -q "APP_PORT" "$SETTINGS_FILE"; then
         sed -i "s/\"ANTHROPIC_API_KEY\"/\"APP_PORT\": \"$APP_PORT\",\n    \"ANTHROPIC_API_KEY\"/" "$SETTINGS_FILE"
-        chown "$USERNAME" "$SETTINGS_FILE"
+        chown "$USERNAME" "$SETTINGS_FILE" 2>/dev/null || true
     fi
 
     # Update workspace CLAUDE.md with app instructions
     CLAUDE_MD="/home/$USERNAME/workspace/CLAUDE.md"
     if [ -f "$CLAUDE_MD" ] && ! grep -q "Running Web Apps" "$CLAUDE_MD"; then
         sed -i '/^## Guidelines/i ## Running Web Apps\n- Your app port is available as `$APP_PORT` in the terminal\n- To run a FastAPI app: `uvicorn app:app --host 0.0.0.0 --port $APP_PORT`\n- Click the **App** tab in the left pane to view your running app\n- FastAPI and uvicorn are pre-installed\n' "$CLAUDE_MD"
-        chown "$USERNAME" "$CLAUDE_MD"
+        chown "$USERNAME" "$CLAUDE_MD" 2>/dev/null || true
     fi
 
-    echo "  $USERNAME: APP_PORT=$APP_PORT"
+    echo "  $USERNAME: APP_PORT=$APP_PORT (OK)"
 done < "$PORTS_FILE"
 
 # Regenerate nginx with new app proxy locations
