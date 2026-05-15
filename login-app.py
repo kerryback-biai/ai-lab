@@ -140,6 +140,7 @@ html, body {{ height: 100%; overflow: hidden; font-family: Arial, sans-serif; }}
         <div class="pane-label">
             <span class="tab active" id="tab-files" onclick="switchLeft('files')">Files</span>
             <span class="tab" id="tab-term" onclick="switchLeft('term')">Terminal</span>
+            <span class="tab" id="tab-app" onclick="switchLeft('app')">App</span>
             <span class="refresh-btn" id="refresh-btn" title="Refresh" onclick="refreshLeft()">&#x21bb;</span>
         </div>
         <iframe id="left-iframe" src="/{username}/files/"></iframe>
@@ -167,16 +168,15 @@ html, body {{ height: 100%; overflow: hidden; font-family: Arial, sans-serif; }}
     // Left pane tab switching
     window.switchLeft = function(mode) {{
         const iframe = document.getElementById('left-iframe');
-        const tabFiles = document.getElementById('tab-files');
-        const tabTerm = document.getElementById('tab-term');
+        const tabs = ['files', 'term', 'app'];
+        tabs.forEach(t => document.getElementById('tab-' + t).classList.remove('active'));
+        document.getElementById('tab-' + mode).classList.add('active');
         if (mode === 'files') {{
             iframe.src = '/{username}/files/';
-            tabFiles.classList.add('active');
-            tabTerm.classList.remove('active');
-        }} else {{
+        }} else if (mode === 'term') {{
             iframe.src = '/{username}/term/';
-            tabTerm.classList.add('active');
-            tabFiles.classList.remove('active');
+        }} else {{
+            iframe.src = '/{username}/app/';
         }}
     }};
 

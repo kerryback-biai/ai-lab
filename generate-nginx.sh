@@ -5,10 +5,12 @@ set -e
 PORTS_FILE="/etc/biai-ports"
 NGINX_LOCATIONS=""
 
-while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT; do
+while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
     [ -z "$USERNAME" ] && continue
     # Default term port if missing (legacy 3-field format)
     [ -z "$TERM_PORT" ] && TERM_PORT=$((TTYD_PORT + 2000))
+    # Default app port if missing (4-field legacy format)
+    [ -z "$APP_PORT" ] && APP_PORT=$((TTYD_PORT + 3000))
 
     NGINX_LOCATIONS="$NGINX_LOCATIONS
     # $USERNAME — claude code terminal
@@ -59,6 +61,17 @@ while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT; do
 </script></head>';
         sub_filter_once on;
         sub_filter_types text/html;
+    }
+
+    # $USERNAME — app preview
+    location /$USERNAME/app/ {
+        proxy_pass http://127.0.0.1:$APP_PORT/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection upgrade;
     }"
 done < "$PORTS_FILE"
 

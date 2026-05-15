@@ -24,29 +24,52 @@ source /etc/biai.env 2>/dev/null || true
 WORKSPACE="/home/$USERNAME/workspace"
 mkdir -p "$WORKSPACE"
 
-# Create session-based workspace structure
-for SESSION in session2 session4 session6 session7; do
-    mkdir -p "$WORKSPACE/$SESSION"
-    ln -sfn "/shared/data/$SESSION/data" "$WORKSPACE/$SESSION/data"
+# Create session-based workspace structure with independent copies of data
+for SESSION in session1 session2; do
+    mkdir -p "$WORKSPACE/$SESSION/data"
+    if [ -d "/shared/data/$SESSION/data" ]; then
+        cp -n /shared/data/$SESSION/data/* "$WORKSPACE/$SESSION/data/" 2>/dev/null || true
+    fi
 done
-
-# Copy exercise templates into session folders (skip if already populated)
-if [ ! -f "$WORKSPACE/session4/session4_hello_agent.py" ]; then
-    for f in /shared/templates/session2_*; do cp "$f" "$WORKSPACE/session2/" 2>/dev/null; done
-    for f in /shared/templates/session4_*; do cp "$f" "$WORKSPACE/session4/" 2>/dev/null; done
-    for f in /shared/templates/session6_*; do cp "$f" "$WORKSPACE/session6/" 2>/dev/null; done
-    for f in /shared/templates/session7_*; do cp "$f" "$WORKSPACE/session7/" 2>/dev/null; done
-fi
 
 # Claude Code settings
 mkdir -p "/home/$USERNAME/.claude/skills"
 
-# Global preferences (theme, etc.) — stored in ~/.claude.json
-cat > "/home/$USERNAME/.claude.json" << 'CLAUDEJSON'
+# Global preferences + onboarding state — stored in ~/.claude.json
+# Only write if missing or lacks onboarding fields (to avoid wiping completed onboarding)
+if [ ! -f "/home/$USERNAME/.claude.json" ] || ! grep -q "hasCompletedOnboarding" "/home/$USERNAME/.claude.json" 2>/dev/null; then
+    API_KEY_SUFFIX="${ANTHROPIC_API_KEY: -20}"
+    CLAUDE_VERSION=$(claude --version 2>/dev/null | head -1 | awk '{print $1}')
+    cat > "/home/$USERNAME/.claude.json" << CLAUDEJSON
 {
-  "theme": "light"
+  "theme": "light",
+  "hasCompletedOnboarding": true,
+  "lastOnboardingVersion": "${CLAUDE_VERSION}",
+  "customApiKeyResponses": {
+    "approved": ["${API_KEY_SUFFIX}"],
+    "rejected": []
+  },
+  "projects": {
+    "/home/$USERNAME/workspace": {
+      "hasTrustDialogAccepted": true,
+      "hasCompletedProjectOnboarding": true
+    }
+  }
 }
 CLAUDEJSON
+fi
+
+# Playwright MCP server
+cat > "/home/$USERNAME/.claude/.mcp.json" << 'MCPJSON'
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
+MCPJSON
 
 cat > "/home/$USERNAME/.claude/settings.json" << SETTINGS
 {
@@ -145,6 +168,12 @@ Use `anthropic` Python package for API calls.
 - When asked for "this year" use 2025; "last year" means 2024
 - Cross-system joins: use `wd_system_ids` to map Workday `worker_id` to Salesforce `OwnerId`
 
+## Running Web Apps
+- Your app port is available as `$APP_PORT` in the terminal
+- To run a FastAPI app: `uvicorn app:app --host 0.0.0.0 --port $APP_PORT`
+- Click the **App** tab in the left pane to view your running app
+- FastAPI and uvicorn are pre-installed
+
 ## Guidelines
 - Write clear, well-structured code
 - When generating documents (Word, Excel, PowerPoint), use the installed skills
@@ -181,9 +210,7 @@ fi
 
 chown -R "$USERNAME" "/home/$USERNAME"
 
-# Complete Claude Code first-run setup non-interactively
-# This accepts the API key so students never see the approval prompt
-su - "$USERNAME" -c "cd ~/workspace && ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY}' claude -p 'hello' --max-turns 1" > /dev/null 2>&1 || true
+# Onboarding is pre-populated in .claude.json above — no need for interactive first-run
 
 # Assign ports: hash username to a stable port pair
 # Use /etc/biai-ports to track assignments
@@ -194,11 +221,17 @@ if grep -q "^$USERNAME:" "$PORTS_FILE"; then
     TTYD_PORT=$(grep "^$USERNAME:" "$PORTS_FILE" | cut -d: -f2)
     FB_PORT=$(grep "^$USERNAME:" "$PORTS_FILE" | cut -d: -f3)
     TERM_PORT=$(grep "^$USERNAME:" "$PORTS_FILE" | cut -d: -f4)
+    APP_PORT=$(grep "^$USERNAME:" "$PORTS_FILE" | cut -d: -f5)
     # Backfill term port if missing (3-field legacy format)
     if [ -z "$TERM_PORT" ]; then
         TERM_PORT=$((TTYD_PORT + 2000))
-        sed -i "s/^$USERNAME:$TTYD_PORT:$FB_PORT$/$USERNAME:$TTYD_PORT:$FB_PORT:$TERM_PORT/" "$PORTS_FILE"
     fi
+    # Backfill app port if missing (4-field legacy format)
+    if [ -z "$APP_PORT" ]; then
+        APP_PORT=$((TTYD_PORT + 3000))
+    fi
+    # Rewrite line with all 5 fields
+    sed -i "s/^$USERNAME:.*/$USERNAME:$TTYD_PORT:$FB_PORT:$TERM_PORT:$APP_PORT/" "$PORTS_FILE"
 else
     # Find next available port pair
     LAST_TTYD=$(awk -F: '{print $2}' "$PORTS_FILE" | sort -n | tail -1)
@@ -206,7 +239,14 @@ else
     TTYD_PORT=$((TTYD_PORT + 1))
     FB_PORT=$((TTYD_PORT + 1000))
     TERM_PORT=$((TTYD_PORT + 2000))
-    echo "$USERNAME:$TTYD_PORT:$FB_PORT:$TERM_PORT" >> "$PORTS_FILE"
+    APP_PORT=$((TTYD_PORT + 3000))
+    echo "$USERNAME:$TTYD_PORT:$FB_PORT:$TERM_PORT:$APP_PORT" >> "$PORTS_FILE"
+fi
+
+# Skip Claude auto-launch for sudo users (admin account)
+TTYD_EXTRA_ENV=""
+if groups "$USERNAME" 2>/dev/null | grep -qw sudo; then
+    TTYD_EXTRA_ENV="Environment=CLAUDE_LAUNCHED=1"
 fi
 
 # ttyd service
@@ -219,6 +259,7 @@ After=network.target
 Type=simple
 User=$USERNAME
 Environment=ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+$TTYD_EXTRA_ENV
 WorkingDirectory=/home/$USERNAME/workspace
 ExecStart=/usr/local/bin/ttyd --port $TTYD_PORT --writable --base-path /$USERNAME/ -t titleFixed="AI Lab" -t 'theme={"background":"#ffffff","foreground":"#000000","cursor":"#000000","selectionBackground":"#b0c4de"}' bash -l
 Restart=on-failure
@@ -275,8 +316,25 @@ systemctl enable --now "ttyd-${USERNAME}.service"
 systemctl enable --now "filebrowser-${USERNAME}.service"
 systemctl enable --now "ttyd-term-${USERNAME}.service"
 
+# Export APP_PORT in .bashrc (idempotent)
+if ! grep -q "APP_PORT" "/home/$USERNAME/.bashrc" 2>/dev/null; then
+    sed -i "/ANTHROPIC_API_KEY/a export APP_PORT=$APP_PORT" "/home/$USERNAME/.bashrc"
+fi
+# Update APP_PORT if it changed
+sed -i "s/^export APP_PORT=.*/export APP_PORT=$APP_PORT/" "/home/$USERNAME/.bashrc"
+
+# Also set APP_PORT in Claude Code settings env
+SETTINGS_FILE="/home/$USERNAME/.claude/settings.json"
+if [ -f "$SETTINGS_FILE" ] && ! grep -q "APP_PORT" "$SETTINGS_FILE"; then
+    sed -i "s/\"ANTHROPIC_API_KEY\"/\"APP_PORT\": \"$APP_PORT\",\n    \"ANTHROPIC_API_KEY\"/" "$SETTINGS_FILE"
+    chown "$USERNAME" "$SETTINGS_FILE"
+fi
+
+# Install fastapi and uvicorn for the user
+su - "$USERNAME" -c "pip install --quiet fastapi uvicorn 2>/dev/null" || true
+
 # Regenerate nginx config
 bash /opt/biai-vm/generate-nginx.sh
 
-echo "Done: $USERNAME (claude=:$TTYD_PORT, files=:$FB_PORT, term=:$TERM_PORT)"
+echo "Done: $USERNAME (claude=:$TTYD_PORT, files=:$FB_PORT, term=:$TERM_PORT, app=:$APP_PORT)"
 echo "URL: https://ai-lab.rice-business.org/$USERNAME/"
