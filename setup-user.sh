@@ -169,9 +169,16 @@ Use `anthropic` Python package for API calls.
 - Cross-system joins: use `wd_system_ids` to map Workday `worker_id` to Salesforce `OwnerId`
 
 ## Running Web Apps
-- Your app port is available as `$APP_PORT` in the terminal
-- To run a FastAPI app: `uvicorn app:app --host 0.0.0.0 --port $APP_PORT`
-- Click the **App** tab in the left pane to view your running app
+
+IMPORTANT: When asked to run a Python web app (FastAPI, Streamlit, or any .py file that serves HTTP), ALWAYS use this command:
+
+    uvicorn <module>:app --host 0.0.0.0 --port \$APP_PORT --root-path /\$USER/app
+
+- Replace <module> with the filename without .py (e.g., \`my_app:app\` for my_app.py)
+- The app will be visible in the **App** tab in the left pane of the workspace
+- \$APP_PORT and \$USER are already set in the environment
+- NEVER use \`python app.py\` to run web apps — always use uvicorn with the flags above
+- Use only relative paths (no leading /) in HTML, JavaScript fetch calls, and links — see the web-app skill for details
 - FastAPI and uvicorn are pre-installed
 
 ## Guidelines

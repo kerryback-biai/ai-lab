@@ -76,7 +76,7 @@ while IFS=, read -r USERNAME PASSWORD; do
 }
 SETTINGS
 
-    # Install Claude Code skills (xlsx, docx, pptx)
+    # Install Claude Code skills (xlsx, docx, pptx, pdf, skill-creator)
     if [ -d "$SKILLS_DIR" ]; then
         mkdir -p "/home/$USERNAME/.claude/skills"
         cp -r "$SKILLS_DIR"/* "/home/$USERNAME/.claude/skills/"

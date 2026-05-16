@@ -18,9 +18,10 @@ apt-get install -y -qq python3 python3-pip python3-venv nodejs npm git curl \
 echo "[2/7] Installing Claude Code..."
 npm install -g @anthropic-ai/claude-code
 
-# 3. npm packages for Office skills (pptxgenjs for slide creation)
+# 3. npm packages for Office skills and Playwright MCP
 echo "[3/7] Installing npm packages..."
-npm install -g pptxgenjs
+npm install -g pptxgenjs @playwright/mcp
+npx playwright install --with-deps chromium
 
 # 4. Python packages (system-wide for all students)
 echo "[4/7] Installing Python packages..."
@@ -61,14 +62,14 @@ mkdir -p /shared/templates
 cp -r /tmp/templates/* /shared/templates/ 2>/dev/null || echo "  Upload templates to /tmp/templates/ and re-run"
 chmod -R 755 /shared/templates
 
-# Claude Code skills (xlsx, docx, pptx) — shared source for all students
+# Claude Code skills (xlsx, docx, pptx, pdf, skill-creator) — shared source for all students
 mkdir -p /shared/skills
 if [ -d /tmp/skills ]; then
     cp -r /tmp/skills/* /shared/skills/
     echo "  Copied skills from /tmp/skills/"
 else
     echo "  WARNING: /tmp/skills/ not found. Upload skill directories there first."
-    echo "  Expected structure: /tmp/skills/xlsx/SKILL.md, /tmp/skills/docx/SKILL.md, /tmp/skills/pptx/SKILL.md"
+    echo "  Expected structure: /tmp/skills/{xlsx,docx,pptx,pdf,skill-creator}/SKILL.md"
 fi
 chmod -R 755 /shared/skills
 
