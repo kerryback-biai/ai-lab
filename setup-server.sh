@@ -12,7 +12,22 @@ echo "[1/7] Installing system packages..."
 apt-get update -qq
 apt-get install -y -qq python3 python3-pip python3-venv nodejs npm git curl \
     libreoffice-calc libreoffice-impress libreoffice-writer \
-    pandoc poppler-utils
+    pandoc poppler-utils \
+    ca-certificates gnupg
+
+# Install Docker (rootless mode prerequisites)
+if ! command -v docker &>/dev/null; then
+    echo "  Installing Docker..."
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
+        uidmap dbus-user-session fuse-overlayfs slirp4netns
+    # Disable system-wide Docker daemon — each user runs their own rootless daemon
+    systemctl disable --now docker.service docker.socket
+fi
 
 # 2. Install Claude Code globally
 echo "[2/7] Installing Claude Code..."

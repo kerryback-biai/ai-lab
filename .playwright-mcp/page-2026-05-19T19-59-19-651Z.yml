@@ -1,0 +1,116 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: AI Lab
+    - generic [ref=e4]: "|"
+    - generic [ref=e5]: Rice Business
+    - generic [ref=e6]: test_student
+    - link "Logout" [ref=e7] [cursor=pointer]:
+      - /url: /
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11] [cursor=pointer]: Files
+        - generic [ref=e12] [cursor=pointer]: Terminal
+        - generic [ref=e13] [cursor=pointer]: App
+        - generic "Refresh" [ref=e14] [cursor=pointer]: ↻
+      - iframe [ref=e15]:
+        - generic [ref=f1e4]:
+          - navigation [ref=f1e5]:
+            - button "person admin" [ref=f1e6] [cursor=pointer]:
+              - generic [ref=f1e7]: person
+              - text: admin
+            - button "My files" [ref=f1e8] [cursor=pointer]:
+              - generic [ref=f1e9]: folder
+              - text: My files
+            - generic [ref=f1e10]:
+              - button "New folder" [ref=f1e11] [cursor=pointer]:
+                - generic [ref=f1e12]: create_new_folder
+                - text: New folder
+              - button "New file" [ref=f1e13] [cursor=pointer]:
+                - generic [ref=f1e14]: note_add
+                - text: New file
+            - generic [ref=f1e15]: 22.8 GiB of 309 GiB used
+            - paragraph [ref=f1e19]:
+              - generic [ref=f1e20]:
+                - link "File Browser" [ref=f1e21] [cursor=pointer]:
+                  - /url: https://github.com/filebrowser/filebrowser
+                - text: 2.62.2
+              - generic [ref=f1e22]: Help
+          - main [ref=f1e23]:
+            - generic [ref=f1e24]:
+              - link "Home" [ref=f1e26] [cursor=pointer]:
+                - /url: /test_student/files/files
+                - generic [ref=f1e27]: home
+              - generic [ref=f1e28]:
+                - generic [ref=f1e29]:
+                  - button "Toggle sidebar" [ref=f1e30] [cursor=pointer]:
+                    - generic [ref=f1e31]: menu
+                  - button "Search" [ref=f1e32] [cursor=pointer]:
+                    - generic [ref=f1e33]: search
+                  - generic:
+                    - button "Switch view":
+                      - generic: view_module
+                      - generic: Switch view
+                    - button "Download":
+                      - generic: file_download
+                      - generic: Download
+                    - button "Upload":
+                      - generic: file_upload
+                      - generic: Upload
+                    - button "Info":
+                      - generic: info
+                      - generic: Info
+                    - button "Select multiple":
+                      - generic: check_circle
+                      - generic: Select multiple
+                  - button "More" [ref=f1e34] [cursor=pointer]:
+                    - generic [ref=f1e35]: more_vert
+                - generic [ref=f1e36]:
+                  - button "Sort by name" [ref=f1e40] [cursor=pointer]:
+                    - text: Name
+                    - generic [ref=f1e41]: arrow_downward
+                  - generic [ref=f1e42]:
+                    - button "session6" [ref=f1e43] [cursor=pointer]:
+                      - generic [ref=f1e45]: folder
+                      - paragraph [ref=f1e47]: session6
+                    - button "session5" [ref=f1e48] [cursor=pointer]:
+                      - generic [ref=f1e50]: folder
+                      - paragraph [ref=f1e52]: session5
+                    - button "session4" [ref=f1e53] [cursor=pointer]:
+                      - generic [ref=f1e55]: folder
+                      - paragraph [ref=f1e57]: session4
+                    - button "session3" [ref=f1e58] [cursor=pointer]:
+                      - generic [ref=f1e60]: folder
+                      - paragraph [ref=f1e62]: session3
+                    - button "session2" [ref=f1e63] [cursor=pointer]:
+                      - generic [ref=f1e65]: folder
+                      - paragraph [ref=f1e67]: session2
+                    - button "session1" [ref=f1e68] [cursor=pointer]:
+                      - generic [ref=f1e70]: folder
+                      - paragraph [ref=f1e72]: session1
+                    - button "__pycache__" [ref=f1e73] [cursor=pointer]:
+                      - generic [ref=f1e75]: folder
+                      - paragraph [ref=f1e77]: __pycache__
+                    - button ".git" [ref=f1e78] [cursor=pointer]:
+                      - generic [ref=f1e80]: folder
+                      - paragraph [ref=f1e82]: .git
+                  - generic [ref=f1e83]:
+                    - button "CLAUDE.md" [ref=f1e84] [cursor=pointer]:
+                      - generic [ref=f1e86]: description
+                      - paragraph [ref=f1e88]: CLAUDE.md
+                    - button ".gitignore" [ref=f1e89] [cursor=pointer]:
+                      - generic [ref=f1e91]: description
+                      - paragraph [ref=f1e93]: .gitignore
+                    - button ".env" [ref=f1e94] [cursor=pointer]:
+                      - generic [ref=f1e96]: description
+                      - paragraph [ref=f1e98]: .env
+                  - generic [ref=f1e99]:
+                    - paragraph [ref=f1e100]: Multiple selection enabled
+                    - button "Clear" [ref=f1e101] [cursor=pointer]:
+                      - generic [ref=f1e102]: clear
+    - generic [ref=e17]:
+      - generic [ref=e18]: Claude Code
+      - iframe [active] [ref=e19]:
+        - generic [ref=f4e5]:
+          - generic:
+            - textbox "Terminal input" [active]

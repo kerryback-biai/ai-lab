@@ -141,13 +141,11 @@ html, body {{ height: 100%; overflow: hidden; font-family: Arial, sans-serif; }}
             <span class="tab active" id="tab-files" onclick="switchLeft('files')">Files</span>
             <span class="tab" id="tab-term" onclick="switchLeft('term')">Terminal</span>
             <span class="tab" id="tab-app" onclick="switchLeft('app')">App</span>
-            <input id="port-input" type="number" placeholder="port" style="display:none;width:56px;padding:1px 4px;margin-left:2px;border:1px solid rgba(255,255,255,0.3);border-radius:3px;background:rgba(255,255,255,0.1);color:#fff;font-size:10px;text-align:center;outline:none" onkeydown="if(event.key==='Enter')loadAppPort()">
-            <span id="port-go" onclick="loadAppPort()" style="display:none;cursor:pointer;font-size:10px;margin-left:2px;opacity:0.7">Go</span>
             <span class="refresh-btn" id="refresh-btn" title="Refresh" onclick="refreshLeft()">&#x21bb;</span>
         </div>
         <iframe id="iframe-files" src="/{username}/files/"></iframe>
         <iframe id="iframe-term" src="/{username}/term/" style="display:none"></iframe>
-        <iframe id="iframe-app" style="display:none"></iframe>
+        <iframe id="iframe-app" src="/{username}/app/" style="display:none"></iframe>
     </div>
     <div class="divider" id="divider"></div>
     <div class="pane" id="pane-right" style="flex: 1 1 70%;">
@@ -175,12 +173,6 @@ html, body {{ height: 100%; overflow: hidden; font-family: Arial, sans-serif; }}
     }};
 
     // Left pane tab switching — toggle visibility, keep all iframes alive
-    const portInput = document.getElementById('port-input');
-    const portGo = document.getElementById('port-go');
-    const defaultPort = '{default_app_port}';
-    let appPort = localStorage.getItem('biai-app-port') || defaultPort;
-    if (appPort) portInput.value = appPort;
-
     window.switchLeft = function(mode) {{
         const tabs = ['files', 'term', 'app'];
         tabs.forEach(t => {{
@@ -190,24 +182,6 @@ html, body {{ height: 100%; overflow: hidden; font-family: Arial, sans-serif; }}
         document.getElementById('tab-' + mode).classList.add('active');
         document.getElementById('iframe-' + mode).style.display = '';
         activeTab = mode;
-        portInput.style.display = mode === 'app' ? '' : 'none';
-        portGo.style.display = mode === 'app' ? '' : 'none';
-        if (mode === 'app' && appPort) {{
-            const appFrame = document.getElementById('iframe-app');
-            if (!appFrame.src || appFrame.src === 'about:blank') {{
-                appFrame.src = '/{username}/app/' + appPort + '/';
-            }}
-        }}
-    }};
-
-    window.loadAppPort = function() {{
-        const port = portInput.value.trim();
-        if (!port) return;
-        appPort = port;
-        localStorage.setItem('biai-app-port', appPort);
-        const appFrame = document.getElementById('iframe-app');
-        appFrame.src = '/{username}/app/' + appPort + '/';
-        switchLeft('app');
     }};
 
     divider.addEventListener('mousedown', function(e) {{
@@ -304,19 +278,6 @@ def is_admin(username: str) -> bool:
         return False
 
 
-def get_user_app_port(username: str) -> str:
-    """Get the assigned app port for a user from /etc/biai-ports."""
-    result = subprocess.run(
-        ["bash", "-c", f"grep '^{username}:' /etc/biai-ports 2>/dev/null"],
-        capture_output=True, text=True,
-    )
-    if result.stdout.strip():
-        parts = result.stdout.strip().split(":")
-        if len(parts) >= 5:
-            return parts[4]
-    return ""
-
-
 def get_session_user(session: Optional[str]) -> Optional[str]:
     """Return username if session is valid, else None."""
     if not session or session not in sessions:
@@ -329,15 +290,16 @@ def get_session_user(session: Optional[str]) -> Optional[str]:
 
 
 def list_workshop_users() -> list[dict]:
-    """List users that have a ttyd service (workshop users)."""
+    """List users from /etc/biai-containers."""
     result = subprocess.run(
-        ["bash", "-c", "cat /etc/biai-ports 2>/dev/null"],
+        ["bash", "-c", "cat /etc/biai-containers 2>/dev/null"],
         capture_output=True, text=True,
     )
     users = []
     for line in result.stdout.strip().splitlines():
         if ":" in line:
-            username = line.split(":")[0]
+            parts = line.split(":")
+            username = parts[0]
             users.append({"username": username, "is_admin": is_admin(username)})
     return users
 
@@ -427,8 +389,7 @@ def workspace(session: Optional[str] = Cookie(None)):
     username = get_session_user(session)
     if not username:
         return RedirectResponse("/", status_code=303)
-    app_port = get_user_app_port(username)
-    return WORKSPACE_PAGE.format(username=username, admin_link="", default_app_port=app_port)
+    return WORKSPACE_PAGE.format(username=username, admin_link="")
 
 
 @app.post("/provision")

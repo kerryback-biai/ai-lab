@@ -1,21 +1,19 @@
 #!/bin/bash
-# Regenerate nginx config from /etc/biai-ports
+# Regenerate nginx config from /etc/biai-containers
+# Format: username:container_ip
 set -e
 
-PORTS_FILE="/etc/biai-ports"
+CONTAINERS_FILE="/etc/biai-containers"
 NGINX_LOCATIONS=""
 
-while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
+while IFS=: read -r USERNAME MACHINE_NAME CONTAINER_IP; do
     [ -z "$USERNAME" ] && continue
-    # Default term port if missing (legacy 3-field format)
-    [ -z "$TERM_PORT" ] && TERM_PORT=$((TTYD_PORT + 2000))
-    # Default app port if missing (4-field legacy format)
-    [ -z "$APP_PORT" ] && APP_PORT=$((TTYD_PORT + 3000))
+    [ -z "$CONTAINER_IP" ] && continue
 
     NGINX_LOCATIONS="$NGINX_LOCATIONS
     # $USERNAME — claude code terminal
     location /$USERNAME/ {
-        proxy_pass http://127.0.0.1:$TTYD_PORT;
+        proxy_pass http://$CONTAINER_IP:9000;
         proxy_set_header Host \$host;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection upgrade;
@@ -25,7 +23,7 @@ while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
 
     # $USERNAME — plain terminal
     location /$USERNAME/term/ {
-        proxy_pass http://127.0.0.1:$TERM_PORT;
+        proxy_pass http://$CONTAINER_IP:9001;
         proxy_set_header Host \$host;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection upgrade;
@@ -35,14 +33,14 @@ while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
 
     # $USERNAME — file browser (proxy auth: auto-login via X-FB-User header)
     location /$USERNAME/files/api/login {
-        proxy_pass http://127.0.0.1:$FB_PORT;
+        proxy_pass http://$CONTAINER_IP:9002;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-FB-User admin;
         proxy_http_version 1.1;
     }
     location /$USERNAME/files/ {
-        proxy_pass http://127.0.0.1:$FB_PORT;
+        proxy_pass http://$CONTAINER_IP:9002;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_http_version 1.1;
@@ -63,17 +61,24 @@ while IFS=: read -r USERNAME TTYD_PORT FB_PORT TERM_PORT APP_PORT; do
         sub_filter_types text/html;
     }
 
-    # $USERNAME — app preview (any port)
-    location ~ ^/$USERNAME/app/(\\d+)(/.*)\$ {
-        proxy_pass http://127.0.0.1:\$1\$2;
+    # $USERNAME — app (always port 8000 inside container)
+    location /$USERNAME/app/ {
+        proxy_pass http://$CONTAINER_IP:8000/;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection upgrade;
+        proxy_intercept_errors on;
+        error_page 502 =200 /$USERNAME/app/_no_app;
+    }
+    location = /$USERNAME/app/_no_app {
+        internal;
+        default_type text/html;
+        return 200 '<html><body style=\"font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100%;margin:0;background:#f5f5f5\"><p style=\"color:#555;font-size:14px\">If you have started an app, refresh this page to view it.</p></body></html>';
     }"
-done < "$PORTS_FILE"
+done < "$CONTAINERS_FILE"
 
 cat > /etc/nginx/sites-available/biai-vm << NGINX
 server {

@@ -1,137 +1,105 @@
 # BIAI Lab Server
 
-Multi-user AI/data agent development platform for Rice Business Executive Education. Provides isolated workspaces with Claude Code (via ttyd terminal) and FileBrowser per student on a shared DigitalOcean Ubuntu 24.04 VM.
+Multi-user AI lab for Rice Business Executive Education. Each student runs in an isolated **systemd-nspawn container** with their own network namespace, so everyone can use port 8000 without conflicts.
 
 - **Domain:** `ai-lab.rice-business.org`
-- **Hostname:** `ai-lab`
-- **Droplet:** `biai-vm` (DigitalOcean, nyc1, 4GB/2vCPU)
-- **IP:** `157.245.133.86`
+- **IP:** `159.223.186.195` (old server: `157.245.133.86`)
+- **SSH:** `root@159.223.186.195` (key-based auth from Kerry's machine)
+- **Architecture:** systemd-nspawn containers on a bridge network (10.100.0.0/24)
+- **Container registry:** `/etc/biai-containers` (format: `username:machine-name:container_ip`)
 
-## Architecture
+Each user has a workspace at `/var/lib/machines/<machine-name>/home/<user>/workspace/`.
 
-```
-Browser → nginx (80 → 301 redirect, 443 SSL via certbot)
-  ├── /            → login-app.py (FastAPI on port 8000)
-  ├── /login       → login-app.py
-  ├── /workspace   → login-app.py (split-pane workspace: files + terminal)
-  ├── /admin       → login-app.py admin panel (DB is_admin check)
-  ├── /<user>/     → ttyd terminal (port 9001+)
-  └── /<user>/files/ → FileBrowser (port 10001+)
-```
+**Important:** nspawn machine names use hyphens (e.g., `kerry-back`), but Linux usernames inside containers use underscores (e.g., `kerry_back`).
 
-After login, users see a single-page workspace with:
-
-- **Left pane (30%):** FileBrowser (file tree)
-- **Right pane (70%):** ttyd terminal (Claude Code)
-- **Draggable divider** between panes
-- **Rice Blue toolbar** at top with username, admin link (if admin), and logout
-
-## User Setup
-
-Each user gets:
-
-- Linux account (no sudo) + home directory
-- `ttyd` systemd service (`ttyd-<user>`) — terminal with Claude Code
-- `filebrowser` systemd service (`filebrowser-<user>`) — file browser with `--noauth` and `perm.admin=false`
-- Workspace at `/home/<user>/workspace/` with exercise templates and symlinked shared data (`/shared/data`)
-- Claude Code settings at `/home/<user>/.claude/settings.json` (pre-approved tool permissions)
-- Claude Code skills copied from `/shared/skills/`
-- `ANTHROPIC_API_KEY` exported in `.bashrc`
-- `.bashrc` auto-launches `claude` on terminal open
-
-### Port Registry
-
-`/etc/biai-ports` maps users to ports: `username:ttyd_port:filebrowser_port`
-
-ttyd ports start at 9001, FileBrowser ports start at 10001.
-
-## Admin Access (Two Levels)
-
-### 1. Login app admin panel (`/admin`)
-
-- Controlled by `is_admin` field in the Koyeb PostgreSQL database (NOT Linux sudo group)
-- Admins see an "Admin" link in the workspace toolbar
-- Allows adding/deleting users on the VM
-- Both `kerry_back` and `kelcie_wold` have `is_admin=true`
-
-### 2. FileBrowser admin (Settings/Admin menus)
-
-- Controlled by `perm.admin` in each user's FileBrowser database (`~/.filebrowser.db`)
-- Only `kerry_back` has FileBrowser admin enabled
-- All other users (including `kelcie_wold`) have `perm.admin=false`
-
-### 3. Server sudo
-
-- Only the `admin` Linux user has sudo privileges
-- `kerry_back` and `kelcie_wold` do NOT have sudo
-
-## User Provisioning (Two Paths)
-
-### 1. Database-driven
-
-- Koyeb PostgreSQL (`biai-db`) stores users with `vm_password` field
-- `fetch-students.py` queries active users with a `vm_password`; `provision-students.sh` creates Linux accounts + services
-- Run manually: `sudo bash provision-students.sh`
-- User management (add/edit/delete, passwords, spending limits) is done via the separate `biai-admin` web app deployed on Koyeb
-
-### 2. Admin panel (runtime)
-
-- Admins log in at `ai-lab.rice-business.org` and add/delete users at `/admin`
-- Default password for new users: `jgsbai`
-- Calls `setup-user.sh` which creates the Linux user, workspace, services, registers in `/etc/biai-ports`, and regenerates nginx
-
-## Key Files
-
-| File                      | Purpose                                                                                                                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `login-app.py`          | FastAPI login + workspace + admin panel (port 8000). Auth via Linux PAM (`su`). Admin check via Koyeb DB `is_admin`. Sessions in memory, 12h expiry. Runs as `biai-login.service`. |
-| `setup-server.sh`       | One-time system setup on fresh Ubuntu 24.04 (packages, Claude Code, Python deps, shared dirs)                                                                                            |
-| `setup-user.sh`         | Provision a single user: create account, workspace, ttyd + filebrowser services (with `perm.admin=false`), update nginx                                                                |
-| `provision-students.sh` | Bulk-provision users from PostgreSQL database via `fetch-students.py`                                                                                                                  |
-| `fetch-students.py`     | Queries `users` table for active users with `vm_password` set                                                                                                                        |
-| `generate-nginx.sh`     | Reads `/etc/biai-ports` and regenerates nginx config with per-user location blocks. Preserves SSL by re-running `certbot install` after regeneration.                                |
-| `nginx-biai-vm.conf`    | Template/reference nginx config                                                                                                                                                          |
-| `setup-digitalocean.sh` | DigitalOcean droplet-specific setup (nginx, certbot, Coder)                                                                                                                              |
-| `create-students.sh`    | Legacy CSV import (reads `username,password` pairs)                                                                                                                                    |
-| `Dockerfile`            | Legacy container build (not currently used — VM deployment is primary)                                                                                                                  |
-| `entrypoint.sh`         | Legacy Docker entrypoint                                                                                                                                                                 |
-
-## Environment Variables
-
-| Variable              | Purpose                                                                                                  |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY` | Claude API key, exported to all user shells                                                              |
-| `DATABASE_URL`      | Koyeb PostgreSQL connection string (used by `fetch-students.py` and `login-app.py` for admin checks) |
-
-Stored in `/etc/biai.env` (sourced by systemd services and scripts) and `/etc/profile.d/anthropic.sh` (system-wide shell export).
-
-## Common Operations
+## Container Management
 
 ```bash
-# Add a user manually
-sudo bash setup-user.sh <username>
+# List running containers
+machinectl list
 
-# Bulk provision from database
-sudo bash provision-students.sh
+# Start/stop a container
+systemctl start systemd-nspawn@<machine-name>
+systemctl stop systemd-nspawn@<machine-name>
 
-# Regenerate nginx after port changes (preserves SSL)
-sudo bash generate-nginx.sh
+# Shell into a container
+PID=$(machinectl show <machine-name> -p Leader --value)
+nsenter -t $PID -m -u -i -n -p -- su - <username>
 
-# Check user services
-systemctl status ttyd-<username> filebrowser-<username>
-
-# Restart login app
-systemctl restart biai-login
-
-# Check login app logs
-journalctl -u biai-login -f
+# Check services inside a container
+nsenter -t $PID -m -u -i -n -p -- systemctl status ttyd-claude ttyd-term filebrowser
 ```
 
-## Deployment
+## Distributing Files to Users
 
-- **VM (DigitalOcean):** Run `setup-server.sh` then `provision-students.sh` on Ubuntu 24.04
-- SSL via certbot (auto-renewed), domain `ai-lab.rice-business.org`
+To upload files to every user's workspace:
 
-## Style
+```bash
+# 1. Copy the file(s) to the server
+scp <local-file> root@159.223.186.195:/tmp/
 
-Login page and workspace toolbar use Rice brand colors: Rice Blue `#00205B`, Rice Gray `#7C7E7F`, white card backgrounds.
+# 2. SSH in and distribute to all containers
+ssh root@159.223.186.195 'while IFS=: read -r USERNAME MACHINE_NAME CONTAINER_IP; do
+    [ -z "$USERNAME" ] && continue
+    DEST="/var/lib/machines/$MACHINE_NAME/home/$USERNAME/workspace"
+    mkdir -p "$DEST/<target-path>"
+    cp -r /tmp/<file-or-dir> "$DEST/<target-path>/"
+    chroot "/var/lib/machines/$MACHINE_NAME" chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/workspace/<target-path>"
+    echo "Done: $USERNAME"
+done < /etc/biai-containers
+rm -rf /tmp/<file-or-dir>'
+```
+
+## Web App Path Fix (absolute → relative)
+
+When distributing files that contain a **web app** (look for HTML/JS with `fetch()` calls, Dockerfile, docker-compose.yml, or FastAPI/Flask apps), **ask Kerry** if absolute API paths should be converted to relative paths before uploading.
+
+**Why:** Each user's app is served behind an nginx sub-path (`/username/app/`). Absolute fetch URLs like `fetch('/api/chat')` resolve to the server root and hit the login app, which returns HTML. The JS then fails with `Unexpected token '<'... is not valid JSON`. Relative URLs like `fetch('api/chat')` resolve correctly against the sub-path.
+
+**What to look for:** `fetch('/...')` patterns in JS, `action="/..."` in HTML forms, `href="/api/..."`, or any hardcoded absolute API paths.
+
+## Installing Python Packages for All Users
+
+```bash
+ssh root@159.223.186.195 '
+while IFS=: read -r USERNAME MACHINE_NAME CONTAINER_IP; do
+    [ -z "$MACHINE_NAME" ] && continue
+    PID=$(machinectl show "$MACHINE_NAME" -p Leader --value 2>/dev/null)
+    [ -z "$PID" ] && continue
+    nsenter -t "$PID" -m -u -i -n -p -- pip3 install --break-system-packages <package> 2>/dev/null
+    echo "Done: $USERNAME"
+done < /etc/biai-containers'
+```
+
+Also install in the base template for future containers:
+```bash
+ssh root@159.223.186.195 'chroot /var/lib/machines/biai-base pip3 install --break-system-packages <package>'
+```
+
+## Known Issue: App Tab Shows "Bad Gateway" Before Any App Is Running
+
+When a student first clicks the App tab, they see a 502 Bad Gateway because nothing is listening on port 8000 yet. This is cosmetic — once they start an app, clicking refresh shows it. Fix planned for the June server (e.g., nginx `error_page 502` with a friendly message).
+
+## Key Scripts
+
+| Script | Purpose |
+|---|---|
+| `setup-nspawn-server.sh` | One-time host setup (bridge, NAT, base template) |
+| `setup-nspawn-user.sh` | Provision a single user container |
+| `generate-nginx-nspawn.sh` | Regenerate nginx config from `/etc/biai-containers` |
+| `login-app-nspawn.py` | FastAPI login + workspace + admin panel (port 7900) |
+| `fix-claudemd.py` | Update CLAUDE.md in all containers |
+| `fix-bashrc.py` | Update terminal banner in all containers |
+
+## System Tuning (required for 45+ containers)
+
+These sysctl settings must be applied for all containers to start:
+```
+fs.inotify.max_user_instances=8192
+fs.inotify.max_user_watches=524288
+fs.nr_open=1048576
+fs.file-max=2097152
+net.ipv4.ip_forward=1
+```
+
+Each container also needs `DefaultLimitNOFILE=65536` in `/etc/systemd/system.conf.d/limits.conf`.

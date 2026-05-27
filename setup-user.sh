@@ -21,6 +21,31 @@ fi
 # Load API key
 source /etc/biai.env 2>/dev/null || true
 
+# Set up rootless Docker for user
+if command -v dockerd-rootless-setuptool.sh &>/dev/null; then
+    # Allocate subordinate UID/GID ranges if not already set
+    if ! grep -q "^$USERNAME:" /etc/subuid 2>/dev/null; then
+        usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$USERNAME"
+    fi
+    loginctl enable-linger "$USERNAME"
+    # Install rootless Docker via nsenter into the user's systemd session
+    if [ ! -f "/home/$USERNAME/.config/systemd/user/docker.service" ]; then
+        USER_UID=$(id -u "$USERNAME")
+        USER_GID=$(id -g "$USERNAME")
+        SYSD_PID=$(pgrep -u "$USER_UID" -x systemd | head -1)
+        if [ -n "$SYSD_PID" ]; then
+            nsenter -t "$SYSD_PID" --mount --pid --setuid "$USER_UID" --setgid "$USER_GID" -- \
+                env HOME="/home/$USERNAME" XDG_RUNTIME_DIR="/run/user/$USER_UID" \
+                bash -c "dockerd-rootless-setuptool.sh install" 2>/dev/null || true
+        fi
+    fi
+    # Add DOCKER_HOST to .bashrc so docker CLI finds the rootless daemon
+    if ! grep -q "DOCKER_HOST" "/home/$USERNAME/.bashrc" 2>/dev/null; then
+        USER_UID=$(id -u "$USERNAME")
+        echo "export DOCKER_HOST=unix:///run/user/$USER_UID/docker.sock" >> "/home/$USERNAME/.bashrc"
+    fi
+fi
+
 WORKSPACE="/home/$USERNAME/workspace"
 mkdir -p "$WORKSPACE"
 
@@ -94,6 +119,7 @@ cat > "/home/$USERNAME/.claude/settings.json" << SETTINGS
       "Bash(mkdir*)",
       "Bash(unzip*)",
       "Bash(git*)",
+      "Bash(docker*)",
       "Bash(zip*)",
       "Read",
       "Write",

@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: AI Lab
+    - generic [ref=e4]: "|"
+    - generic [ref=e5]: Rice Business
+    - link "Open App ↗" [ref=e6] [cursor=pointer]:
+      - /url: /test_student/app/
+    - generic [ref=e7]: test_student
+    - link "Logout" [ref=e8] [cursor=pointer]:
+      - /url: /
+  - iframe [ref=e9]:
+    
