@@ -1,5 +1,0 @@
-[   97026ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ https://ai-lab.rice-business.org/kerry_back/term/:0
-[   97276ms] [LOG] [ttyd] websocket connection opened @ https://ai-lab.rice-business.org/kerry_back/term/:1
-[   97343ms] [LOG] [ttyd] WebGL renderer loaded @ https://ai-lab.rice-business.org/kerry_back/term/:1
-[   97343ms] [LOG] [ttyd] setting Unicode version: 11 @ https://ai-lab.rice-business.org/kerry_back/term/:1
-[   97343ms] [LOG] [ttyd] setting fixed title: Terminal @ https://ai-lab.rice-business.org/kerry_back/term/:1
