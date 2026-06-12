@@ -22,9 +22,25 @@ netplan apply 2>/dev/null || true
 
 # ── NAT for container internet access ───────────────────────────
 echo "Setting up NAT..."
-sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-biai.conf
+cat > /etc/sysctl.d/99-biai.conf << 'EOF'
+net.ipv4.ip_forward=1
+fs.inotify.max_user_instances=8192
+fs.inotify.max_user_watches=524288
+fs.nr_open=1048576
+fs.file-max=2097152
+EOF
 sysctl -p /etc/sysctl.d/99-biai.conf
+
+# Containers must survive systemd-container package upgrades: the postinst
+# restart races machined's registration cleanup ("Machine already exists"),
+# so failed starts need an automatic retry.
+mkdir -p /etc/systemd/system/systemd-nspawn@.service.d
+cat > /etc/systemd/system/systemd-nspawn@.service.d/restart.conf << 'EOF'
+[Service]
+Restart=on-failure
+RestartSec=10
+EOF
+systemctl daemon-reload
 
 # Get the public interface
 PUB_IF=$(ip route get 8.8.8.8 | grep -oP 'dev \K\S+')

@@ -7,10 +7,12 @@ description: Deploy files to the BIAI lab server (ai-lab.rice-business.org) and 
 
 Deploy files to the ai-lab server and distribute them to all user directories.
 
-- **Server:** `157.245.133.86` (ai-lab.rice-business.org)
-- **Root access:** `sshpass -p 'FdsaJkl0!A' ssh root@157.245.133.86`
-- **User registry:** `/etc/biai-ports` (format: `username:ttyd_port:fb_port:term_port:app_port`)
-- **Workspace path:** `/home/<username>/workspace/`
+- **Server:** `159.223.186.195` (ai-lab.rice-business.org) — the old 157.245.133.86 droplet was destroyed
+- **Root access:** `ssh root@159.223.186.195` (key auth only via `~/.ssh/id_ed25519`; the old sshpass password no longer works anywhere). If the key is rejected, see the recovery steps in the `digitalocean` skill.
+- **User registry:** `/etc/biai-containers` (format: `username:machine-name:container_ip`) — this server uses nspawn containers, not the old `/etc/biai-ports` layout
+- **Workspace path:** `/var/lib/machines/<machine-name>/home/<username>/workspace/`
+
+NOTE: the command examples below predate the nspawn architecture (they use `sshpass`, `/etc/biai-ports`, and `/home/<user>` paths). Use the distribution patterns in this repo's CLAUDE.md instead; they loop over `/etc/biai-containers` and `chroot` into each machine.
 
 ## Uploading Files to the Server
 

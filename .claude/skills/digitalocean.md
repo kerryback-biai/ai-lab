@@ -1,230 +1,71 @@
 ---
 name: digitalocean
-description: "Manage the biai-vm DigitalOcean droplet. Use this skill for server management: SSH commands, service status, droplet power operations, deploying code, checking logs, managing nginx, and student provisioning."
+description: "Manage the BIAI lab DigitalOcean droplets. Use this skill for server management: SSH access, droplet power operations, API access, checking status, and recovering SSH access when locked out."
 ---
 
-# DigitalOcean Server Management — biai-vm
+# DigitalOcean Server Management — BIAI Labs
 
-## Server Details
+## Current Droplets (as of June 2026)
 
-- **Droplet Name**: biai-vm
-- **Droplet ID**: 562286347
-- **IP Address**: 157.245.133.86
-- **Region**: nyc1
-- **Size**: s-2vcpu-4gb-120gb-intel
-- **OS**: Ubuntu 24.04 LTS
-- **Domain**: vm.kerryback.com
-- **SSH Access**: `ssh root@157.245.133.86`
+| Droplet | ID | IP | Domain |
+|---|---|---|---|
+| biai-vm-v2 (ai-lab) | 572016029 | 159.223.186.195 | ai-lab.rice-business.org |
+| junelab-biai | 572894552 | 68.183.59.1 | lab-june.rice-business.org |
+| auglab-biai | 575347814 | 138.197.23.251 | lab-aug.rice-business.org |
 
-## CLI Setup
+The old `biai-vm` droplet (157.245.133.86, vm.kerryback.com) was DESTROYED. Any reference to it, or to the `sshpass -p 'FdsaJkl0!A'` root password, is obsolete — that password works nowhere now.
 
-doctl is installed via winget. Always set the PATH before using it:
+## SSH Access
 
-```bash
-export PATH="$PATH:/c/Users/kerry/AppData/Local/Microsoft/WinGet/Packages/DigitalOcean.Doctl_Microsoft.Winget.Source_8wekyb3d8bbwe"
-```
-
-Authentication token is stored in doctl's config (authenticated via `doctl auth init`).
-
-## Common Operations
-
-### Droplet Management
+All servers accept publickey auth only (no passwords). Kerry's key is `~/.ssh/id_ed25519` (ed25519, generated June 2, 2026; registered on DO as "kerry-macbook").
 
 ```bash
-# Check droplet status
-doctl compute droplet get 562286347 --format Name,PublicIPv4,Status,SizeSlug
-
-# Power cycle (reboot)
-doctl compute droplet-action reboot 562286347
-
-# Power off
-doctl compute droplet-action power-off 562286347
-
-# Power on
-doctl compute droplet-action power-on 562286347
-
-# Resize droplet (must be powered off first for CPU changes)
-doctl compute droplet-action resize 562286347 --size <size-slug>
-
-# List available sizes
-doctl compute size list
-
-# Take a snapshot
-doctl compute droplet-action snapshot 562286347 --snapshot-name "biai-vm-$(date +%Y%m%d)"
-
-# List snapshots
-doctl compute snapshot list --resource droplet
+ssh root@<ip> '<command>'
 ```
 
-### SSH Remote Commands
+If a server rejects the key ("Permission denied (publickey)"), the fix is the DO web console:
+1. DigitalOcean dashboard → Droplets → <droplet> → Access → Launch Droplet Console (the droplets have the agent, so this opens a root shell directly).
+2. Paste:
+```
+echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID3/LFU8k1Y4Y0fQHclJJf9KeQO82/Beo4rWDbsXZfnv kerryback@gmail.com' >> /root/.ssh/authorized_keys
+```
+Do NOT trigger a DO password reset unless the console demands a password — on June 2, 2026 a password reset power-cycled the droplet and briefly broke its networking.
 
-Run commands on the server via SSH:
+There is no old private key on this Mac, none in Bitwarden, and the DO API cannot inject keys into a running droplet. Don't re-search for these.
+
+## API Access (no doctl installed)
+
+The token is `DIGITAL_OCEAN_TOKEN` in `~/.env`. Use curl:
 
 ```bash
-ssh root@157.245.133.86 "<command>"
+source ~/.env
+# List droplets
+curl -s -H "Authorization: Bearer $DIGITAL_OCEAN_TOKEN" 'https://api.digitalocean.com/v2/droplets?per_page=50'
+
+# Droplet actions (reboot, power-off, power-on)
+curl -s -X POST -H "Authorization: Bearer $DIGITAL_OCEAN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"type":"reboot"}' 'https://api.digitalocean.com/v2/droplets/<id>/actions'
+
+# Recent actions on a droplet
+curl -s -H "Authorization: Bearer $DIGITAL_OCEAN_TOKEN" 'https://api.digitalocean.com/v2/droplets/<id>/actions'
 ```
 
-Examples:
+DNS is at DNSimple (`DNSIMPLE_ACCESS_TOKEN` in `~/.env`), not in DO DNS.
 
+## Known Issue: All Containers Down, Host Still Up
+
+Symptom: login page loads, every user path returns 502, `machinectl list` shows no machines, all `systemd-nspawn@*` units failed with "Failed to register machine: Machine already exists".
+
+Cause: unattended-upgrades upgrading the `systemd-container` package restarts all nspawn services; the restart races systemd-machined's cleanup and fails. This took down all 45 ai-lab containers on June 10, 2026 (the host never rebooted).
+
+Prevention (applied to all three servers June 12, 2026): `/etc/systemd/system/systemd-nspawn@.service.d/restart.conf` containing `[Service]`, `Restart=on-failure`, `RestartSec=10`.
+
+Recovery:
 ```bash
-# Check server uptime and load
-ssh root@157.245.133.86 "uptime"
-
-# Check disk usage
-ssh root@157.245.133.86 "df -h /"
-
-# Check memory usage
-ssh root@157.245.133.86 "free -h"
-
-# Check running services
-ssh root@157.245.133.86 "systemctl list-units --type=service --state=running | grep -E 'ttyd|filebrowser|nginx|login'"
-
-# View login app logs
-ssh root@157.245.133.86 "journalctl -u login-app --no-pager -n 50"
-
-# View nginx error log
-ssh root@157.245.133.86 "tail -50 /var/log/nginx/error.log"
-
-# View nginx access log
-ssh root@157.245.133.86 "tail -50 /var/log/nginx/access.log"
+while IFS=: read -r U M I; do systemctl start systemd-nspawn@$M; done < /etc/biai-containers
 ```
 
-### Service Management
-
-The server runs these services:
-- **login-app**: FastAPI login page on port 8000
-- **nginx**: Reverse proxy on port 80 (and 443 if TLS configured)
-- **ttyd-{username}**: Per-user web terminal (ports 9001+)
-- **filebrowser-{username}**: Per-user file browser (ports 8001+)
-
+Verify with `machinectl list` (expect 45) and a user path (expect 200 — note the Claude tab is at `/<username>/`, terminal at `/<username>/term/`, files at `/<username>/files/`):
 ```bash
-# Check all biai services
-ssh root@157.245.133.86 "systemctl list-units --type=service | grep -E 'ttyd|filebrowser|nginx|login'"
-
-# Restart a specific service
-ssh root@157.245.133.86 "systemctl restart login-app"
-ssh root@157.245.133.86 "systemctl restart nginx"
-ssh root@157.245.133.86 "systemctl restart ttyd-<username>"
-ssh root@157.245.133.86 "systemctl restart filebrowser-<username>"
-
-# Check service status
-ssh root@157.245.133.86 "systemctl status login-app"
-
-# View port assignments
-ssh root@157.245.133.86 "cat /etc/biai-ports"
-
-# Check what's listening on ports
-ssh root@157.245.133.86 "ss -tlnp | grep -E ':(80|8000|8001|9001)'"
+curl -s -o /dev/null -w '%{http_code}' https://<domain>/<username>/
 ```
-
-### Deploying Code
-
-The repo is cloned to `/opt/biai-vm/` on the server.
-
-```bash
-# Pull latest code on the server
-ssh root@157.245.133.86 "cd /opt/biai-vm && git pull"
-
-# Restart services after deploy
-ssh root@157.245.133.86 "systemctl restart login-app && systemctl reload nginx"
-
-# Full redeploy: pull + re-provision + restart
-ssh root@157.245.133.86 "cd /opt/biai-vm && git pull && bash provision-students.sh"
-```
-
-### Student/User Management
-
-```bash
-# List current users
-ssh root@157.245.133.86 "cat /etc/biai-ports"
-
-# Add a new user manually
-ssh root@157.245.133.86 "useradd -m -s /bin/bash -N <username> && echo '<username>:jgsbai' | chpasswd && bash /opt/biai-vm/setup-user.sh <username>"
-
-# Re-provision all students from database
-ssh root@157.245.133.86 "cd /opt/biai-vm && source /etc/biai.env && bash provision-students.sh"
-
-# Check a user's workspace
-ssh root@157.245.133.86 "ls -la /home/<username>/workspace/"
-
-# Check environment file
-ssh root@157.245.133.86 "cat /etc/biai.env"
-```
-
-### Nginx Management
-
-```bash
-# Regenerate nginx config from /etc/biai-ports
-ssh root@157.245.133.86 "bash /opt/biai-vm/generate-nginx.sh"
-
-# View current nginx config
-ssh root@157.245.133.86 "cat /etc/nginx/sites-available/biai-vm"
-
-# Test nginx config
-ssh root@157.245.133.86 "nginx -t"
-
-# Reload nginx
-ssh root@157.245.133.86 "systemctl reload nginx"
-```
-
-### TLS/SSL
-
-```bash
-# Set up Let's Encrypt certificate
-ssh root@157.245.133.86 "certbot --nginx -d vm.kerryback.com"
-
-# Check certificate status
-ssh root@157.245.133.86 "certbot certificates"
-
-# Renew certificates
-ssh root@157.245.133.86 "certbot renew"
-```
-
-### Firewall
-
-```bash
-# Check firewall status
-ssh root@157.245.133.86 "ufw status verbose"
-
-# Allow HTTP/HTTPS/SSH
-ssh root@157.245.133.86 "ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp"
-```
-
-### Troubleshooting
-
-```bash
-# Check if login app is running
-ssh root@157.245.133.86 "systemctl status login-app; ss -tlnp | grep 8000"
-
-# Check all failed services
-ssh root@157.245.133.86 "systemctl --failed"
-
-# Check recent system logs
-ssh root@157.245.133.86 "journalctl --since '1 hour ago' --no-pager | tail -100"
-
-# Check if a student can reach their terminal
-ssh root@157.245.133.86 "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9001/<username>/"
-
-# Check if filebrowser is responding
-ssh root@157.245.133.86 "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8001/<username>/files/"
-```
-
-## Architecture
-
-```
-Internet → nginx (80/443)
-            ├── / → login-app.py (8000)
-            ├── /login → login-app.py (8000)
-            ├── /admin → login-app.py (8000)
-            ├── /<user>/ → ttyd (9001+)
-            └── /<user>/files/ → filebrowser (8001+)
-```
-
-## Notes
-
-- DNS for vm.kerryback.com is managed outside DigitalOcean (not in DO's DNS)
-- Default student password: `jgsbai`
-- The login app authenticates against Linux PAM (su)
-- filebrowser runs with --noauth (auth handled by login app session)
-- ttyd runs with --writable to allow terminal input
-- Each student's .bashrc auto-launches Claude Code on terminal login
